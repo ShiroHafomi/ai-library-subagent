@@ -1,66 +1,49 @@
-from langchain.tools import tool
+"""LangChain SQL Toolkit cho tra cứu sách (tài khoản MySQL chỉ đọc).
 
-from database.connection import get_connection
+Toolkit có thể thực thi SQL do model sinh; MySQL chỉ cấp SELECT cho tài khoản này
+trên bảng books. Metadata cục bộ chỉ phục vụ phản chiếu schema đáng tin cậy.
+"""
+import os
+from sqlalchemy import Column, MetaData, Table, create_engine, inspect
+from sqlalchemy.engine import URL
+from langchain_community.utilities import SQLDatabase
+from langchain_community.agent_toolkits import SQLDatabaseToolkit
 
-_VALID_STATUSES = {"", "available", "borrowed"}
 
-
-@tool
-def search_books(
-    title: str = "",
-    author: str = "",
-    category: str = "",
-    status: str = "",
-) -> str:
-    """Tìm sách theo tên, tác giả, thể loại hoặc trạng thái available/borrowed."""
-    title = title.strip()
-    author = author.strip()
-    category = category.strip()
-    status = status.strip().lower()
-
-    if status not in _VALID_STATUSES:
-        return "Trạng thái không hợp lệ. Chỉ dùng 'available' hoặc 'borrowed'."
-
-    query = """
-        SELECT id, title, author, category, is_available
-        FROM books
-        WHERE 1=1
-    """
-    params: list[object] = []
-
-    if title:
-        query += " AND LOWER(title) LIKE LOWER(%s)"
-        params.append(f"%{title}%")
-    if author:
-        query += " AND LOWER(author) LIKE LOWER(%s)"
-        params.append(f"%{author}%")
-    if category:
-        query += " AND LOWER(category) LIKE LOWER(%s)"
-        params.append(f"%{category}%")
-    if status == "available":
-        query += " AND is_available = 1"
-    elif status == "borrowed":
-        query += " AND is_available = 0"
-
-    query += " ORDER BY title LIMIT 50"
-
-    connection = get_connection()
-    cursor = connection.cursor(dictionary=True)
-    try:
-        cursor.execute(query, params)
-        rows = cursor.fetchall()
-    finally:
-        cursor.close()
-        connection.close()
-
-    if not rows:
-        return "Không tìm thấy sách phù hợp."
-
-    results = []
-    for row in rows:
-        availability = "Sẵn sàng" if row["is_available"] else "Đã được mượn"
-        results.append(
-            f'{row["id"]} - {row["title"]} - {row["author"]} - '
-            f'{row["category"]} - {availability}'
+def create_book_sql_tools(model):
+    """Tạo SQL tools chỉ truy cập bảng books bằng tài khoản SELECT-only."""
+    user = os.getenv('DB_READONLY_USER')
+    password = os.getenv('DB_READONLY_PASSWORD')
+    if not user or not password:
+        raise RuntimeError('Thiếu DB_READONLY_USER/DB_READONLY_PASSWORD (tài khoản chỉ có quyền SELECT).')
+    url = URL.create(
+        'mysql+pymysql', username=user, password=password,
+        host=os.getenv('DB_HOST', 'localhost'),
+        port=int(os.getenv('DB_PORT', '3306')),
+        database=os.getenv('DB_NAME'),
+    )
+    engine = create_engine(url)
+    inspector = inspect(engine)
+    primary_keys = set(
+        inspector.get_pk_constraint('books')['constrained_columns'] or []
+    )
+    # Keep column metadata only; following foreign keys can require access to other tables.
+    columns = [
+        Column(
+            column['name'],
+            column['type'],
+            nullable=column['nullable'],
+            primary_key=column['name'] in primary_keys,
         )
-    return "\n".join(results)
+        for column in inspector.get_columns('books')
+    ]
+    metadata = MetaData()
+    Table('books', metadata, *columns)
+    db = SQLDatabase(
+        engine,
+        metadata=metadata,
+        include_tables=['books'],
+        sample_rows_in_table_info=0,
+        lazy_table_reflection=True,
+    )
+    return SQLDatabaseToolkit(db=db, llm=model).get_tools()

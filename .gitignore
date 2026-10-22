@@ -39,8 +39,25 @@ Thumbs.db
 seeAdmin.js
 #tests/
 **/tests/
+!tests/
+tests/*
+!tests/test_transaction_context.py
+!tests/test_migrations.py
+!tests/test_borrow_tools.py
+!tests/test_return_tools.py
+!tests/test_book_tools.py
+!tests/test_book_sql_reflection.py
+!tests/test_policy_tools.py
+!docs/
+!docs/superpowers/
+!docs/superpowers/specs/
+!docs/superpowers/plans/
+!docs/superpowers/specs/2026-10-19-library-agent-refactor-design.md
+!docs/superpowers/plans/2026-10-19-library-agent-refactor.md
 
 __pycache__/
 *.py[cod]
 *$py.class
 __init__.py
+
+data/chroma_policy/

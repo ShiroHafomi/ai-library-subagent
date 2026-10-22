@@ -15,7 +15,10 @@ def read_memory(query: str) -> str:
     if not query:
         return "Please provide a non-empty query to search memories."
 
-    user_id = get_memory_user_id()
+    try:
+        user_id = get_memory_user_id()
+    except RuntimeError as exc:
+        return str(exc)
     connection = get_connection()
     cursor = connection.cursor(dictionary=True)
     try:
@@ -53,7 +56,10 @@ def save_memory(memory_key: str, memory_value: str) -> str:
     if not memory_value:
         return "Memory value cannot be empty."
 
-    user_id = get_memory_user_id()
+    try:
+        user_id = get_memory_user_id()
+    except RuntimeError as exc:
+        return str(exc)
     connection = get_connection()
     cursor = connection.cursor(dictionary=True)
     try:

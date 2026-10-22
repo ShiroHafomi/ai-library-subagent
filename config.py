@@ -37,4 +37,7 @@ def create_model():
 
 def get_memory_user_id() -> str:
     """Get the user ID for memory operations."""
-    return os.getenv("LIBRARY_USER_ID", "default-user")
+    user_id = os.getenv("LIBRARY_USER_ID", "").strip()
+    if not user_id or user_id == "default-user":
+        raise RuntimeError("Long-term memory bị từ chối: cần LIBRARY_USER_ID riêng cho người dùng đã xác thực.")
+    return user_id
