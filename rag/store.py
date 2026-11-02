@@ -1,4 +1,3 @@
-"""Lập chỉ mục và truy xuất chính sách bằng Gemini Embeddings + Chroma."""
 import hashlib
 import json
 import os

@@ -1,5 +1,7 @@
 import unittest
 
+from langgraph.pregel._executor import BackgroundExecutor
+
 from tools.transaction_context import (
     TrustedTransactionContext,
     get_trusted_transaction_context,
@@ -15,6 +17,8 @@ class TrustedTransactionContextTests(unittest.TestCase):
             "authorization_granted": True,
             "confirmation_verified": True,
             "loan_days": 14,
+            "confirmed_action": "borrow",
+            "confirmed_resource_id": 9,
             "max_active_loans": 3,
         }
         values.update(overrides)
@@ -29,6 +33,17 @@ class TrustedTransactionContextTests(unittest.TestCase):
 
         with trusted_transaction_context(context):
             self.assertIs(get_trusted_transaction_context(), context)
+
+        with self.assertRaises(RuntimeError):
+            get_trusted_transaction_context()
+
+    def test_langgraph_background_executor_propagates_trusted_context(self):
+        context = self.make_context()
+
+        with trusted_transaction_context(context):
+            with BackgroundExecutor({}) as submit:
+                future = submit(get_trusted_transaction_context)
+                self.assertIs(future.result(timeout=5), context)
 
         with self.assertRaises(RuntimeError):
             get_trusted_transaction_context()

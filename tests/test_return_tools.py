@@ -3,8 +3,47 @@ from unittest.mock import MagicMock, patch
 
 from pydantic import ValidationError
 
-from tools.return_tools import return_book
+from tools.return_tools import find_active_loans, return_book
 from tools.transaction_context import TrustedTransactionContext
+
+
+class FindActiveLoansTests(unittest.TestCase):
+    @patch("tools.return_tools.get_connection")
+    def test_lookup_fails_without_trusted_context_before_database_access(self, get_connection):
+        result = find_active_loans.invoke({"book_title": "Clean Code"})
+
+        self.assertIn("tầng ứng dụng", result)
+        get_connection.assert_not_called()
+
+    @patch("tools.return_tools.get_connection")
+    @patch("tools.return_tools.get_trusted_transaction_context")
+    def test_lookup_is_member_scoped_and_title_is_parameterized(self, get_context, get_connection):
+        get_context.return_value = TrustedTransactionContext(
+            actor_id="actor-test",
+            member_id=7,
+            authorization_granted=True,
+            confirmation_verified=False,
+            loan_days=14,
+            max_active_loans=3,
+        )
+        connection = MagicMock()
+        cursor = MagicMock()
+        cursor.fetchall.return_value = [
+            {"record_id": 42, "book_id": 9, "title": "Clean Code", "borrowed_at": "today", "due_at": "soon"}
+        ]
+        connection.cursor.return_value = cursor
+        get_connection.return_value = connection
+        injection = "%' OR 1=1 --"
+
+        result = find_active_loans.invoke({"book_title": injection})
+
+        self.assertIn("Mã phiếu: 42", result)
+        sql, params = cursor.execute.call_args.args
+        self.assertIn("br.member_id = %s AND br.status = 'borrowed'", sql)
+        self.assertIn("b.title LIKE %s", sql)
+        self.assertEqual(params, (7, f"%{injection}%"))
+        cursor.close.assert_called_once()
+        connection.close.assert_called_once()
 
 
 class ReturnBookTests(unittest.TestCase):
@@ -15,6 +54,8 @@ class ReturnBookTests(unittest.TestCase):
             authorization_granted=True,
             confirmation_verified=True,
             loan_days=14,
+            confirmed_action="return",
+            confirmed_resource_id=42,
             max_active_loans=3,
         )
         self.connection = MagicMock()
@@ -74,16 +115,14 @@ class ReturnBookTests(unittest.TestCase):
     def test_record_owned_by_another_member_is_rejected(self, get_context, get_connection):
         get_context.return_value = self.context
         get_connection.return_value = self.connection
-        self.cursor.fetchone.return_value = {
-            "id": 42,
-            "member_id": 8,
-            "book_id": 9,
-            "status": "borrowed",
-        }
+        self.cursor.fetchone.return_value = None
 
         result = return_book.invoke({"record_id": 42})
 
-        self.assertIn("quyền", result)
+        self.assertIn("Không tìm thấy phiếu mượn", result)
+        lookup_call = self.cursor.execute.call_args
+        self.assertIn("member_id = %s", lookup_call.args[0])
+        self.assertEqual(lookup_call.args[1], (42, self.context.member_id))
         self.connection.rollback.assert_called_once()
         self.connection.commit.assert_not_called()
 

@@ -1,5 +1,4 @@
 """Book Subagent dùng SQL tools LangChain, không có câu SQL viết sẵn."""
-from tools.book_tools import create_book_sql_tools
 
 BOOK_SYSTEM_PROMPT = """
 Bạn là Book Subagent của thư viện. Bạn chỉ tra cứu sách bằng SQL SELECT.
@@ -14,10 +13,10 @@ Bạn là Book Subagent của thư viện. Bạn chỉ tra cứu sách bằng SQ
 """.strip()
 
 
-def create_book_subagent(model):
+def create_book_subagent(sql_tools):
     return {
         'name': 'book-agent',
         'description': 'Tra cứu sách bằng LangChain SQL Toolkit chỉ đọc theo system prompt.',
         'system_prompt': BOOK_SYSTEM_PROMPT,
-        'tools': create_book_sql_tools(model),
+        'tools': sql_tools,
     }

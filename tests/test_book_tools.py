@@ -1,55 +1,61 @@
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-from tools.book_tools import search_books
+from sqlalchemy import Boolean, Integer, String
+
+from tools.book_tools import create_book_sql_tools
 
 
-class SearchBooksTests(unittest.TestCase):
-    @patch("tools.book_tools.get_connection")
-    def test_keyword_and_status_are_parameterized_against_actual_columns(self, get_connection):
-        connection = MagicMock()
-        cursor = MagicMock()
-        connection.cursor.return_value = cursor
-        cursor.fetchall.return_value = [
-            {"id": 5, "title": "Clean Code", "author": "Robert Martin", "category": "Software", "is_available": 1}
+class BookSQLToolsTests(unittest.TestCase):
+    @patch.dict('os.environ', {}, clear=True)
+    def test_requires_dedicated_readonly_credentials(self):
+        with self.assertRaisesRegex(RuntimeError, 'DB_READONLY_USER'):
+            create_book_sql_tools(object())
+
+    @patch('tools.book_tools.SQLDatabaseToolkit')
+    @patch('tools.book_tools.SQLDatabase')
+    @patch('tools.book_tools.inspect')
+    @patch('tools.book_tools.create_engine')
+    @patch.dict(
+        'os.environ',
+        {
+            'DB_READONLY_USER': 'reader',
+            'DB_READONLY_PASSWORD': 'reader-password',
+            'DB_HOST': 'localhost',
+            'DB_PORT': '3306',
+            'DB_NAME': 'library',
+        },
+        clear=True,
+    )
+    def test_exposes_sql_toolkit_only_after_books_schema_reflection(
+        self, create_engine, inspect, sql_database, toolkit
+    ):
+        engine = create_engine.return_value
+        inspector = inspect.return_value
+        inspector.get_pk_constraint.return_value = {'constrained_columns': ['id']}
+        inspector.get_columns.return_value = [
+            {'name': 'id', 'type': Integer(), 'nullable': False},
+            {'name': 'title', 'type': String(255), 'nullable': False},
+            {'name': 'author', 'type': String(255), 'nullable': False},
+            {'name': 'category', 'type': String(255), 'nullable': False},
+            {'name': 'is_available', 'type': Boolean(), 'nullable': False},
         ]
-        get_connection.return_value = connection
+        expected_tools = [object()]
+        toolkit.return_value.get_tools.return_value = expected_tools
 
-        result = search_books.invoke({"keyword": "Clean", "status": "available"})
+        tools = create_book_sql_tools(object())
 
-        self.assertIn("Clean Code", result)
-        sql, params = cursor.execute.call_args.args
-        self.assertIn("title", sql)
-        self.assertIn("author", sql)
-        self.assertIn("is_available", sql)
-        self.assertNotIn("Clean", sql)
-        self.assertEqual(params, ["%Clean%", "%Clean%"])
-        cursor.close.assert_called_once()
-        connection.close.assert_called_once()
-
-    @patch("tools.book_tools.get_connection")
-    def test_sql_metacharacters_remain_bound_search_data(self, get_connection):
-        connection = MagicMock()
-        cursor = MagicMock()
-        connection.cursor.return_value = cursor
-        cursor.fetchall.return_value = []
-        get_connection.return_value = connection
-        keyword = "%' OR 1=1 --"
-
-        result = search_books.invoke({"keyword": keyword})
-
-        sql, params = cursor.execute.call_args.args
-        self.assertNotIn(keyword, sql)
-        self.assertEqual(params, [f"%{keyword}%", f"%{keyword}%"])
-        self.assertEqual(result, "Không tìm thấy sách phù hợp.")
-
-    @patch("tools.book_tools.get_connection")
-    def test_rejects_unknown_status_without_database_connection(self, get_connection):
-        result = search_books.invoke({"status": "lost"})
-
-        self.assertIn("Trạng thái không hợp lệ", result)
-        get_connection.assert_not_called()
+        self.assertEqual(tools, expected_tools)
+        url = create_engine.call_args.args[0]
+        self.assertEqual(url.drivername, 'mysql+pymysql')
+        self.assertEqual(url.username, 'reader')
+        self.assertEqual(url.database, 'library')
+        inspect.assert_called_once_with(engine)
+        sql_database.assert_called_once()
+        self.assertEqual(sql_database.call_args.kwargs['include_tables'], ['books'])
+        self.assertEqual(sql_database.call_args.kwargs['sample_rows_in_table_info'], 0)
+        self.assertTrue(sql_database.call_args.kwargs['lazy_table_reflection'])
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     unittest.main()

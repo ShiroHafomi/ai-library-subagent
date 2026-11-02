@@ -32,7 +32,27 @@ def create_model():
         get_model_name(),
         model_provider="google_genai",
         api_key=get_api_key(),
+        max_output_tokens=512,
+        # Deep Agents summarizes older history at 85% of this operational budget
+        # and retains the recent 10%; this is not a provider context limit.
+        profile={"max_input_tokens": 24_000},
     )
+
+
+def get_demo_member_id() -> int:
+    """Return the configured local demo member ID or fail closed."""
+    value = os.getenv("DEMO_MEMBER_ID", "").strip()
+    if not value:
+        raise RuntimeError(
+            "Thiếu DEMO_MEMBER_ID trong .env; chưa thể thực hiện mượn/trả sách."
+        )
+    if not value.isascii() or not value.isdecimal():
+        raise ValueError("DEMO_MEMBER_ID phải là số nguyên dương.")
+
+    member_id = int(value)
+    if member_id <= 0 or member_id > 2_147_483_647:
+        raise ValueError("DEMO_MEMBER_ID phải nằm trong phạm vi INT dương của MySQL.")
+    return member_id
 
 
 def get_memory_user_id() -> str:

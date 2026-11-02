@@ -15,6 +15,8 @@ class BorrowBookTests(unittest.TestCase):
             authorization_granted=True,
             confirmation_verified=True,
             loan_days=14,
+            confirmed_action="borrow",
+            confirmed_resource_id=9,
             max_active_loans=3,
         )
         self.connection = MagicMock()

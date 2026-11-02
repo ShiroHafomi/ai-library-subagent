@@ -5,37 +5,32 @@ from tools.policy_agent import answer_policy
 
 
 class AnswerPolicyTests(unittest.TestCase):
-    @patch("tools.policy_agent.POLICY_FILE")
-    def test_returns_only_relevant_policy_document_content(self, policy_file):
-        policy_file.exists.return_value = True
-        policy_file.read_text.return_value = (
-            "## Thời hạn mượn\nThời hạn trong tài liệu là 14 ngày.\n"
-            "## Bảo quản sách\nGiữ gìn sách cẩn thận."
-        )
+    @patch("tools.policy_agent.retrieve_policy")
+    def test_returns_relevant_rag_document_content(self, retrieve_policy):
+        document = type("Document", (), {
+            "page_content": "Thời hạn trong tài liệu là 14 ngày.",
+            "metadata": {"source": "policy.md", "start_index": 0, "is_demo": True},
+        })()
+        retrieve_policy.return_value = [(document, 0.9)]
 
         result = answer_policy.invoke({"question": "thời hạn mượn"})
 
         self.assertIn("14 ngày", result)
-        self.assertNotIn("Giữ gìn sách", result)
-        policy_file.read_text.assert_called_once_with(encoding="utf-8")
+        self.assertIn("policy.md", result)
+        retrieve_policy.assert_called_once_with("thời hạn mượn")
 
-    @patch("tools.policy_agent.POLICY_FILE")
-    def test_reports_missing_document_without_inventing_policy(self, policy_file):
-        policy_file.exists.return_value = False
-
+    @patch("tools.policy_agent.retrieve_policy", return_value=[])
+    def test_reports_missing_document_without_inventing_policy(self, retrieve_policy):
         result = answer_policy.invoke({"question": "thời hạn mượn"})
 
-        self.assertIn("Không tìm thấy tài liệu nội quy", result)
-        policy_file.read_text.assert_not_called()
+        self.assertIn("Không tìm thấy thông tin phù hợp", result)
+        retrieve_policy.assert_called_once_with("thời hạn mượn")
 
-    @patch("tools.policy_agent.POLICY_FILE")
-    def test_reports_when_question_has_no_matching_section(self, policy_file):
-        policy_file.exists.return_value = True
-        policy_file.read_text.return_value = "## Gia hạn\nMột lần nếu đủ điều kiện."
-
+    @patch("tools.policy_agent.retrieve_policy", side_effect=RuntimeError("index missing"))
+    def test_reports_retrieval_error_without_inventing_policy(self, retrieve_policy):
         result = answer_policy.invoke({"question": "số lượng thành viên"})
 
-        self.assertIn("không tìm thấy thông tin phù hợp", result.lower())
+        self.assertIn("Không thể tra cứu nội quy", result)
         self.assertNotIn("Một lần", result)
 
 

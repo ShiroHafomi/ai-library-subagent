@@ -27,6 +27,8 @@ def read_memory(query: str) -> str:
             SELECT memory_key, memory_value
             FROM user_memories
             WHERE user_id = %s AND memory_value LIKE %s
+            ORDER BY updated_at DESC
+            LIMIT 5
         """
         # Use %s for parameter and add wildcards in the parameter value
         search_term = f"%{query}%"

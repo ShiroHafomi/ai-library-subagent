@@ -1,0 +1,13 @@
+deepagents
+langchain
+langchain-core
+langchain-community
+langchain-google-genai
+langchain-chroma
+langchain-text-splitters
+langgraph
+mysql-connector-python
+sqlalchemy
+pymysql
+python-dotenv
+pytest
